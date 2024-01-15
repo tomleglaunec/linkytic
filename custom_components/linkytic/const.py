@@ -71,7 +71,7 @@ DATASET_HISTORIC = r"""
         (?P<data>\S*)       # ASSUMES (TBV) that data contains only printable characters, except space (0x20) as it is the field separator
     )
     \x20
-    (?P<chechsum>[\x20-\x5F])       # Checksum is a single printable char between 0x20 and 0x5F
+    (?P<checksum>[\x20-\x5F])       # Checksum is a single printable char between 0x20 and 0x5F
     \x0D$
 """
 
@@ -86,7 +86,7 @@ DATASET_STANDARD = r"""
         (?P<data>[\x20-\x7E]*)  # ASSUMES (TBV) that data contains only printable characters
         \x09
     )
-    (?P<chechsum>[\x20-\x5F])       # Checksum is a single printable char between 0x20 and 0x5F
+    (?P<checksum>[\x20-\x5F])       # Checksum is a single printable char between 0x20 and 0x5F
     \x0D$
 """
 
