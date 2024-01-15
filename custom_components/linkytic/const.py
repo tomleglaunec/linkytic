@@ -52,6 +52,43 @@ SHORT_FRAME_FORCED_UPDATE_TAGS = [
     "IINST3",
 ]
 
+# Frame format caracters
+FRAME_STX = b"\x02"
+FRAME_ETX = b"\x03"
+DATASET_START = b"\x0A"
+DATASET_END = b"\x0D"
+DATASET_FIELD_SEPARATOR_STANDARD = b"\x09"
+DATASET_FIELD_SEPARATOR_HISTORIC = b"\x20"
+FRAME_ENCODING = 'ascii'
+
+# Don't forget to use the VERBOSE flag when compiling regex
+# See Enedis-NOI-CPT_54E for reference
+DATASET_HISTORIC = r"""
+    ^\x0A
+    (?P<checked>
+        (?P<tag>\S*)
+        \x20
+        (?P<data>\S*)       # ASSUMES (TBV) that data contains only printable characters, except space (0x20) as it is the field separator
+    )
+    \x20
+    (?P<chechsum>[\x20-\x5F])       # Checksum is a single printable char between 0x20 and 0x5F
+    \x0D$
+"""
+
+DATASET_STANDARD = r"""
+    ^\x0A
+    (?P<checked>
+        (?P<tag>\S{0,8})
+        \x09
+        # Optional timestamp field
+        (?: (?P<timestamp>[\x20EeHh]\d{12}) # SYYMMDDhhmmss format
+        \x09 )?    
+        (?P<data>[\x20-\x7E]*)  # ASSUMES (TBV) that data contains only printable characters
+        \x09
+    )
+    (?P<chechsum>[\x20-\x5F])       # Checksum is a single printable char between 0x20 and 0x5F
+    \x0D$
+"""
 
 # Device identification
 
