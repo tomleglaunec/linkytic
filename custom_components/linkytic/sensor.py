@@ -21,13 +21,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.linkytic.parser import LinkyIdentifier
+
 from .const import (
-    DID_CONSTRUCTOR,
-    DID_CONSTRUCTOR_CODE,
-    DID_REGNUMBER,
-    DID_TYPE,
-    DID_TYPE_CODE,
-    DID_YEAR,
     DOMAIN,
     EXPERIMENTAL_DEVICES,
     SETUP_PRODUCER,
@@ -62,7 +58,7 @@ async def async_setup_entry(
 
     # Flag for experimental counters which have slightly different tags.
     is_pilot: bool = (
-        serial_reader.device_identification[DID_TYPE_CODE] in EXPERIMENTAL_DEVICES
+        int(serial_reader.device_identifier.type_code) in EXPERIMENTAL_DEVICES  # type:ignore
     )
 
     # Init sensors
@@ -978,7 +974,7 @@ async def async_setup_entry(
                     config_title=config_entry.title,
                     config_uniq_id=config_entry.entry_id,
                     serial_reader=serial_reader,
-                )
+                )  # type: ignore    # Why is this reporting?
             )
             sensors.append(
                 LinkyTICStringSensor(
@@ -1175,12 +1171,12 @@ class ADSSensor(LinkyTICSensor[str]):
             return
 
         # Set this sensor extra attributes
-        did = self._serial_controller.device_identification
+        did = cast(LinkyIdentifier, self._serial_controller.device_identifier)
         self._extra = {
-            "constructeur": f"{did[DID_CONSTRUCTOR] or 'Inconnu'} ({did[DID_CONSTRUCTOR_CODE]})",
-            "année de construction": f"20{did[DID_YEAR]}",
-            "type de l'appareil": f"{did[DID_TYPE] or 'Inconnu'} ({did[DID_TYPE_CODE]})",
-            "matricule de l'appareil": did[DID_REGNUMBER] or "Inconnu",
+            "constructeur": f"{did.constructor or 'Inconnu'} ({did.constructor_code})",
+            "année de construction": f"20{did.year}",
+            "type de l'appareil": f"{did.type or 'Inconnu'} ({did.type_code})",
+            "matricule de l'appareil": did.registration_number or "Inconnu",
         }
         # Save value
         self._last_value = value

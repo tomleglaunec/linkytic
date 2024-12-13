@@ -2,18 +2,11 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 
 from .const import (
-    DID_CONSTRUCTOR,
-    DID_DEFAULT_MANUFACTURER,
-    DID_DEFAULT_MODEL,
     DID_DEFAULT_NAME,
-    DID_REGNUMBER,
-    DID_TYPE,
     DOMAIN,
 )
 from .serial_reader import LinkyTICReader
@@ -33,11 +26,13 @@ class LinkyTICEntity(Entity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return a device description for device registry."""
-        did = self._serial_controller.device_identification
+        did = self._serial_controller.device_identifier
+        assert did is not None
 
         return DeviceInfo(
-            identifiers={(DOMAIN, cast(str, did.get(DID_REGNUMBER)))},
-            manufacturer=did.get(DID_CONSTRUCTOR, DID_DEFAULT_MANUFACTURER),
-            model=did.get(DID_TYPE, DID_DEFAULT_MODEL),
+            identifiers={(DOMAIN, did.registration_number)},
+            manufacturer=did.constructor,
+            model=did.type,
             name=DID_DEFAULT_NAME,
+            serial_number=did.serial_number,
         )
