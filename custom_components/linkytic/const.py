@@ -42,24 +42,24 @@ MODE_HISTORIC_FIELD_SEPARATOR = b"\x20"
 LINE_END = b"\r\n"
 FRAME_END = b"\r\x03\x02\n"
 
-SHORT_FRAME_DETECTION_TAGS = ["ADIR1", "ADIR2", "ADIR3"]
-SHORT_FRAME_FORCED_UPDATE_TAGS = [
+SHORT_FRAME_DETECTION_TAGS = ("ADIR1", "ADIR2", "ADIR3")
+SHORT_FRAME_FORCED_UPDATE_TAGS = (
     "ADIR1",
     "ADIR2",
     "ADIR3",
     "IINST1",
     "IINST2",
     "IINST3",
-]
+)
 
-# Frame format caracters
+# Frame format characters
 FRAME_STX = b"\x02"
 FRAME_ETX = b"\x03"
-DATASET_START = b"\x0A"
-DATASET_END = b"\x0D"
+DATASET_START = b"\x0a"
+DATASET_END = b"\x0d"
 DATASET_FIELD_SEPARATOR_STANDARD = b"\x09"
 DATASET_FIELD_SEPARATOR_HISTORIC = b"\x20"
-FRAME_ENCODING = 'ascii'
+FRAME_ENCODING = "ascii"
 
 # Don't forget to use the VERBOSE flag when compiling regex
 # See Enedis-NOI-CPT_54E for reference
