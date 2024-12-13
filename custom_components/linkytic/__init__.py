@@ -65,7 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "Connected to serial port but coulnd't read serial number before timeout: check if TIC is connected and active."
         ) from e
 
-    _LOGGER.info(f"Device connected with serial number: {s_n}")
+    _LOGGER.info("Device connected with serial number: %s", s_n)
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, serial_reader.signalstop)
     # Add options callback
@@ -121,8 +121,9 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry):
             )
             if serial_by_id == new[SETUP_SERIAL]:
                 _LOGGER.warning(
-                    f"Couldn't find a persistent /dev/serial/by-id alias for {serial_by_id}. "
-                    "Problems might occur at startup if device names are not persistent."
+                    "Couldn't find a persistent /dev/serial/by-id alias for %s. "
+                    "Problems might occur at startup if device names are not persistent.",
+                    serial_by_id,
                 )
             else:
                 new[SETUP_SERIAL] = serial_by_id
