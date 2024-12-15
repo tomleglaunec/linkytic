@@ -7,6 +7,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from enum import Enum
 
 import serial
@@ -24,15 +25,47 @@ from .const import (
     PARITY,
     SHORT_FRAME_DETECTION_TAGS,
     STOPBITS,
+    TICMODE_HISTORIC,
+    TICMODE_STANDARD,
 )
 from .parser import (
     Dataset,
     HistoricTICParser,
     LinkyIdentifier,
     StandardTICParser,
+    TICParser,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+BAUDRATES = {
+    TICMODE_HISTORIC: MODE_HISTORIC_BAUD_RATE,
+    TICMODE_STANDARD: MODE_STANDARD_BAUD_RATE,
+}
+
+PARSERS = {
+    TICMODE_HISTORIC: HistoricTICParser,
+    TICMODE_STANDARD: StandardTICParser,
+}
+
+
+@dataclass
+class LinkyConfig:
+    """Configuration of a TIC instance."""
+
+    title: str
+    serial_url: str
+    baudrate: int = field(init=False)
+    mode: str
+    realtime: bool
+    threephase: bool
+    producer: bool
+    parser: type[TICParser] = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Determine parser and baudrate."""
+        self.baudrate = BAUDRATES[self.mode]
+        self.parser = PARSERS[self.mode]
 
 
 class State(Enum):
@@ -49,40 +82,25 @@ class LinkyTICReader(threading.Thread):
 
     def __init__(
         self,
-        title: str,
-        port,
-        std_mode,
-        producer_mode,
-        three_phase,
-        real_time: bool | None = False,
+        config: LinkyConfig,
     ) -> None:
-        """Init the LinkyTIC thread serial reader."""  # Thread
-        self._setup_error: BaseException | None = None
+        """Init the LinkyTIC thread serial reader."""
+        # Thread
         self._stopsignal = False
-        self._title = title
+        self._setup_error: Exception | None = None
         # Options
-        if real_time is None:
-            real_time = False
-        self._realtime = real_time
-        # Build
-        self._port = port
-        self._baudrate = (
-            MODE_STANDARD_BAUD_RATE if std_mode else MODE_HISTORIC_BAUD_RATE
-        )
-        self._std_mode = std_mode
-        self._producer_mode = producer_mode if std_mode else False
-        self._three_phase = three_phase
+        self._config = config
+        self._parser: TICParser = config.parser()
         # Run
         self._reader: serial.Serial | None = None
-        self._parser = StandardTICParser() if std_mode else HistoricTICParser()
         self._values: dict[str, Dataset] = {}
         self._frames_read = 0
         self._tags_seen: list[str] = []
         self._device_identifier: LinkyIdentifier | None = None
         self._notif_callbacks: dict[str, Callable[[bool], None]] = {}
-        self._state = State.INITIALIZED
         # Init parent thread class
-        super().__init__(name=f"LinkyTIC for {title}")
+        super().__init__(name=f"LinkyTIC for {config.title}")
+        self._state = State.INITIALIZED
 
     def get_values(self, tag) -> tuple[str | None, str | None]:
         """Get tag value and timestamp from the thread memory cache."""
@@ -114,10 +132,10 @@ class LinkyTICReader(threading.Thread):
     @property
     def port(self) -> str:
         """Returns serial port."""
-        return self._port
+        return self._config.serial_url
 
     @property
-    def setup_error(self) -> BaseException | None:
+    def setup_error(self) -> Exception | None:
         """If the reader thread terminates due to a serial exception, this property will contain the raised exception."""
         return self._setup_error
 
@@ -151,6 +169,7 @@ class LinkyTICReader(threading.Thread):
 
         if not self.device_identifier:
             # Should only be assigned for first initialization of new entry.
+            # setup_entry shall only setup entities after the device identifier could be read.
             self._device_identifier = LinkyIdentifier(address.data)
 
         elif self.device_identifier.serial_number != address.data:
@@ -162,17 +181,20 @@ class LinkyTICReader(threading.Thread):
             return
 
         # Historic short frames must be pushed.
-        if self._realtime or self._is_short_frame(datasets):
+        if self._config.realtime or self._is_short_frame(datasets):
             # Get matching keys.
             for key in datasets.keys() & self._notif_callbacks.keys():
-                self._notif_callbacks[key](self._realtime)
+                self._notif_callbacks[key](self._config.realtime)
 
         self._frames_read += 1
         self._values.update(datasets)
 
     def _is_short_frame(self, datasets: dict[str, Dataset]) -> bool:
         """Specific handler for historic short frames. Will return True if function handled a short frame."""
-        if not self._std_mode and datasets.keys() & SHORT_FRAME_DETECTION_TAGS:
+        if (
+            not self._config.mode == TICMODE_HISTORIC
+            and datasets.keys() & SHORT_FRAME_DETECTION_TAGS
+        ):
             _LOGGER.debug("Short frame detected, pushing data.")
             return True
         return False
@@ -184,7 +206,7 @@ class LinkyTICReader(threading.Thread):
             # Serial error, do not start reader thread
             return
 
-        _LOGGER.debug("Serial connection established at %s", self._port)
+        _LOGGER.debug("Serial connection established at %s", self._reader.name)
         self._state = State.RUNNING
 
         while not self._stopsignal:
@@ -195,7 +217,9 @@ class LinkyTICReader(threading.Thread):
                 except LINKY_IO_ERRORS as e:
                     if self._state is not State.FAILED:
                         self._state = State.FAILED
-                        _LOGGER.warning("Could not connect to %s: (%s)", self._port, e)
+                        _LOGGER.warning(
+                            "Could not connect to %s: (%s)", self._reader.name, e
+                        )
 
                     # Cooldown
                     time.sleep(2)
@@ -207,7 +231,7 @@ class LinkyTICReader(threading.Thread):
             except LINKY_IO_ERRORS as exc:
                 _LOGGER.error(
                     "Failed to read data from serial connection at %s: %s.",
-                    self._port,
+                    self._reader.name,
                     exc,
                 )
                 self._reader.close()
@@ -238,7 +262,9 @@ class LinkyTICReader(threading.Thread):
         """Activate the stop flag in order to stop the thread from within."""
         if self.is_alive():
             _LOGGER.debug(
-                "Stopping %s serial thread reader (received %s)", self._title, event
+                "Stopping %s serial thread reader (received %s)",
+                self._config.title,
+                event,
             )
             self._stopsignal = True
 
@@ -258,8 +284,10 @@ class LinkyTICReader(threading.Thread):
 
     def update_options(self, real_time: bool):
         """Setter to update serial reader options."""
-        _LOGGER.debug("%s: new real time option value: %s", self._title, real_time)
-        self._realtime = real_time
+        _LOGGER.debug(
+            "%s: new real time option value: %s", self._config.title, real_time
+        )
+        self._config.realtime = real_time
 
     def _cleanup_cache(self):
         """Call to cleanup the data cache to allow some sensors to get back to undefined/unavailable if they are not present in the last frame."""
@@ -274,7 +302,7 @@ class LinkyTICReader(threading.Thread):
                 # Inform entity of a new value available (None) if in push mode
                 try:
                     notif_callback = self._notif_callbacks[cached_tag]
-                    notif_callback(self._realtime)
+                    notif_callback(self._config.realtime)
                 except KeyError:
                     pass
         self._tags_seen = []
@@ -286,8 +314,8 @@ class LinkyTICReader(threading.Thread):
         # Because we run in the thread context, we need to catch any exceptions and save them to report to the main thread.
         try:
             self._reader = serial.serial_for_url(
-                url=self._port,
-                baudrate=self._baudrate,
+                url=self._config.serial_url,
+                baudrate=self._config.baudrate,
                 bytesize=BYTESIZE,
                 parity=PARITY,
                 stopbits=STOPBITS,
@@ -301,7 +329,7 @@ class LinkyTICReader(threading.Thread):
         self._values = {}
         # Inform sensor in push mode to come fetch data (will get None and switch to unavailable)
         for notif_callback in self._notif_callbacks.values():
-            notif_callback(self._realtime)
+            notif_callback(self._config.realtime)
         self._state = State.INITIALIZED
 
 

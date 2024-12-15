@@ -19,9 +19,8 @@ from .const import (
     SETUP_SERIAL,
     SETUP_THREEPHASE,
     SETUP_TICMODE,
-    TICMODE_STANDARD,
 )
-from .serial_reader import LinkyTICReader
+from .serial_reader import LinkyConfig, LinkyTICReader
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
@@ -31,16 +30,18 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up linkytic from a config entry."""
     # Create the serial reader thread and start it
-    port = entry.data.get(SETUP_SERIAL)
+
+    config = LinkyConfig(
+        title=entry.title,
+        serial_url=entry.data[SETUP_SERIAL],
+        mode=entry.data[SETUP_TICMODE],
+        threephase=entry.data[SETUP_THREEPHASE],
+        producer=entry.data[SETUP_PRODUCER],
+        realtime=entry.data.get(OPTIONS_REALTIME, False),
+    )
+
     try:
-        serial_reader = LinkyTICReader(
-            title=entry.title,
-            port=port,
-            std_mode=entry.data.get(SETUP_TICMODE) == TICMODE_STANDARD,
-            producer_mode=entry.data.get(SETUP_PRODUCER),
-            three_phase=entry.data.get(SETUP_THREEPHASE),
-            real_time=entry.options.get(OPTIONS_REALTIME),
-        )
+        serial_reader = LinkyTICReader(config)
         serial_reader.start()
 
         async def read_serial_number(serial: LinkyTICReader):
@@ -56,7 +57,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Error when opening serial port.
     except LINKY_IO_ERRORS as e:
-        raise ConfigEntryNotReady(f"Couldn't open serial port {port}: {e}") from e
+        raise ConfigEntryNotReady(
+            f"Couldn't open serial port at {config.serial_url}: {e}"
+        ) from e
 
     # Timeout waiting for S/N to be read.
     except TimeoutError as e:
