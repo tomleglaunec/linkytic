@@ -79,14 +79,15 @@ class Dataset(ABC):
 
         self._tag = m.group("tag")
         self._data = m.group("data")
-        self._timestamp = m.group("timestamp")
+        # Timestamp group doesn't exist in historic dataset
+        self._timestamp = m.groupdict().get("timestamp")
 
         checksum = ord(m.group("checksum"))
 
         checked_zone = m.group("checked")
 
-        if (c := self._compute_checksum(checked_zone)) != checksum:
-            raise InvalidChecksumError(raw_dataset, c, checksum)
+        if (computed := self._compute_checksum(checked_zone)) != checksum:
+            raise InvalidChecksumError(raw_dataset, checksum, computed)
 
     def _compute_checksum(self, checked) -> int:
         """Returns the checksum"""
@@ -206,7 +207,7 @@ class InvalidChecksumError(Exception):
 
     def __init__(self, raw, expected, computed) -> None:
         super().__init__(
-            f"Invalid checksum for dataset {raw} (expected: {expected}, computed: {computed})"
+            f"Invalid checksum for dataset {raw} (expected: '{expected:c}', computed: '{computed:c}')"
         )
         self.raw = raw
         self.expected = expected
