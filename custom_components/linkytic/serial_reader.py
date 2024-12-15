@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 import time
@@ -183,7 +184,7 @@ class LinkyTICReader(threading.Thread):
             # Serial error, do not start reader thread
             return
 
-        _LOGGER.info("Serial connection established at %s", self._port)
+        _LOGGER.debug("Serial connection established at %s", self._port)
         self._state = State.RUNNING
 
         while not self._stopsignal:
@@ -233,16 +234,27 @@ class LinkyTICReader(threading.Thread):
         self._notif_callbacks[tag] = notif_callback
 
     @callback
-    def signalstop(self, event):
+    async def signalstop(self, event):
         """Activate the stop flag in order to stop the thread from within."""
         if self.is_alive():
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Stopping %s serial thread reader (received %s)", self._title, event
             )
             self._stopsignal = True
-            # No timeout is configured, we have to cancel any blocking read operation
-            if self._reader and self._reader.is_open:
-                self._reader.cancel_read()
+
+            def cancel_read():
+                if self._reader and self._reader.is_open:
+                    # rfc2217 implementation doesn't have a cancel_read() method, but will gracefully terminate connection
+                    # if close() is called when a blocking read is active.
+                    # This is not the case with the 'default' implementation that will raise a SerialException without cancelling.
+                    if hasattr(self._reader, "cancel_read"):
+                        self._reader.cancel_read()
+
+                    self._reader.close()
+
+            # Encapsulate into thread because this callback will be executed in the mainthread by homeassistant and RFC2217 has
+            # sleep blocking calls in open and close calls.
+            await asyncio.to_thread(cancel_read)
 
     def update_options(self, real_time: bool):
         """Setter to update serial reader options."""
