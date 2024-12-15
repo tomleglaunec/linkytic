@@ -60,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Timeout waiting for S/N to be read.
     except TimeoutError as e:
-        serial_reader.signalstop("linkytic_timeout")
+        await serial_reader.signalstop("linkytic_timeout")
         raise ConfigEntryNotReady(
             "Connected to serial port but coulnd't read serial number before timeout: check if TIC is connected and active."
         ) from e
